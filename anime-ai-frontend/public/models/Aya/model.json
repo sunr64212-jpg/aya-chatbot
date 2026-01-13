@@ -1,0 +1,13 @@
+{
+    "type": "Live2D Model Setting",
+    "name": "aya",
+    "model": "aya_other-12.moc",
+    "textures": [
+        "texture_00.png"
+    ],
+    "physics": "aya_other-12.physics",
+    "hit_areas": [
+        { "name": "head", "id": "HEAD" },
+        { "name": "body", "id": "BODY" }
+    ]
+}

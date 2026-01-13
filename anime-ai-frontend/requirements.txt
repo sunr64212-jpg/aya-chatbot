@@ -1,0 +1,6 @@
+streamlit
+openai
+langchain
+chromadb
+numpy
+python-dotenv

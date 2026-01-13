@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 可以加一个背景色测试一下 CSS 是否生效 */
+body {
+  background-color: #fff0f5;
+}

@@ -1,5 +1,10 @@
-fastapi
-uvicorn[standard]
+streamlit
 openai
-python-dotenv
+langchain
+langchain-community
+langchain-huggingface
+chromadb
+sentence-transformers
 pydantic
+python-dotenv
+tiktoken

@@ -167,20 +167,46 @@ def detect_story_scope(search_query):
             context_text = ""
             retrieved_flag = False  # 标记是否成功检索到资料
 
-            # 3. 检索 (只有当路由找到了文件，且不是NONE时才检索)
+            # 3. 检索 (修改后的鲁棒版本)
             if target_files_str != "NONE" and "txt" in target_files_str:
-                target_files = [f.strip() for f in target_files_str.split(",") if "txt" in f]
+                # 原始文件名列表，例如 ['B30.txt', 'D6.txt']
+                raw_files = [f.strip() for f in target_files_str.split(",") if "txt" in f]
+
+                # 构建“全方位拦截”的路径列表
+                # 因为我们不知道当初建库时存的是 "B30.txt" 还是 "data_source/B30.txt" 还是 "data_source\B30.txt"
+                target_sources = []
+                for fname in raw_files:
+                    target_sources.append(fname)  # 尝试1: 纯文件名
+                    target_sources.append(f"data_source/{fname}")  # 尝试2: Linux/Mac 相对路径
+                    target_sources.append(f"data_source\\{fname}")  # 尝试3: Windows 相对路径 (关键!)
+
+                # 打印调试信息到侧边栏（帮你确认到底锁定了什么文件）
+                with st.sidebar:
+                    st.write("🔍 **Debug 路由信息**")
+                    st.write(f"路由锁定: {raw_files}")
+                    st.write(f"尝试匹配路径: {target_sources}")
+
                 try:
+                    # 使用扩大范围后的列表进行过滤
                     docs = vectordb.similarity_search(
                         search_query,
                         k=4,
-                        filter={"source": {"$in": target_files}}
+                        filter={"source": {"$in": target_sources}}
                     )
+
                     # 只有当检索结果不为空时，才视为检索成功
                     if docs:
                         context_text = "\n\n".join([d.page_content for d in docs])
                         retrieved_flag = True
+
+                        # 调试：显示检索到的真实来源，让你知道数据库里到底存了什么
+                        with st.sidebar:
+                            st.success(f"✅ 成功检索到 {len(docs)} 条片段")
+                            sources_found = set([d.metadata.get('source') for d in docs])
+                            st.write(f"真实数据来源: {sources_found}")
+
                 except Exception as e:
+                    st.sidebar.error(f"检索出错: {e}")
                     print(f"检索警告: {e}")
 
                     # C. 构建 Prompt (关键分支逻辑)

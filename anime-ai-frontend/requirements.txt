@@ -1,6 +1,10 @@
 streamlit
 openai
 langchain
+langchain-community
+langchain-huggingface
 chromadb
-numpy
+sentence-transformers
+pydantic
 python-dotenv
+tiktoken

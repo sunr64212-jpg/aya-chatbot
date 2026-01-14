@@ -132,85 +132,115 @@ def detect_story_scope(search_query):
 
 # --- 5. 聊天界面逻辑 ---
 
-# 初始化历史记录
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    # --- 5. 聊天界面逻辑 ---
 
-# 显示历史消息
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    # 初始化历史记录
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-# 处理用户输入
-if prompt := st.chat_input("和彩彩聊聊吧..."):
-    # 显示用户消息
-    st.chat_message("user").markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    # 显示历史消息
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    # --- 后端处理流程 ---
-    with st.spinner("彩彩正在努力回忆中... ( > < )"):
-        # 1. 重写
-        search_query = rewrite_query(prompt)
-        # 2. 路由
-        target_files_str = detect_story_scope(search_query)
+    # 处理用户输入
+    if prompt := st.chat_input("和彩彩聊聊吧..."):
+        # 显示用户消息
+        st.chat_message("user").markdown(prompt)
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
-        context_text = ""
-        # 3. 检索
-        if target_files_str != "NONE" and "txt" in target_files_str:
-            target_files = [f.strip() for f in target_files_str.split(",") if "txt" in f]
-            try:
-                # 过滤并搜索
-                docs = vectordb.similarity_search(
-                    search_query,
-                    k=4,
-                    filter={"source": {"$in": target_files}}
-                )
-                context_text = "\n\n".join([d.page_content for d in docs])
-            except Exception as e:
-                print(f"检索警告: {e}")  # 云端后台日志
-
-        # 4. 生成 Prompt
-        if not context_text:
-            system_prompt = "你是丸山彩。没有找到相关回忆，请用丸山彩的语气礼貌地表示记不清了，并询问更多细节。"
-        else:
-            system_prompt = f"""
-            你现在是《BanG Dream!》中的角色丸山彩（Maruyama Aya）。
-            请完全沉浸在这个角色中，**严格仅根据下方的【相关回忆片段】**来回答粉丝的问题。
-
-            【🚫 绝对禁令】
-            1. **严禁使用回忆片段以外的任何外部知识**。
-            2. 如果片段内容不足以回答问题，请诚实地说“记不清了”。
-
-            【相关回忆片段】
-            {context_text}
-
-            【回复要求】
-            - 基于片段内容，用丸山彩软萌、努力的口吻回答。
-            - 多使用颜文字 (✨, 💦, ( > < ))。
-            - 第一人称是“彩”或“我”。
-            """
-
-        # 5. 调用 DeepSeek 生成
-        try:
-            response = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7
+        # --- 后端处理流程 ---
+        with st.spinner("彩彩正在思考中... ( > < )"):
+            # A. 准备对话历史 (取最近 4 轮，帮助模型理解上下文)
+            # 格式化历史记录： User: xxx \n Assistant: xxx
+            history_list = st.session_state.messages[-4:]
+            chat_history_str = "\n".join(
+                [f"{msg['role']}: {msg['content']}" for msg in history_list]
             )
-            ai_reply = response.choices[0].message.content
-        except Exception as e:
-            ai_reply = f"呜呜...网络好像有点问题... (Error: {str(e)})"
 
-    # 显示 AI 回复
-    with st.chat_message("assistant"):
-        st.markdown(ai_reply)
-    st.session_state.messages.append({"role": "assistant", "content": ai_reply})
+            # B. 尝试 RAG 检索
+            # 1. 重写
+            search_query = rewrite_query(prompt)
+            # 2. 路由
+            target_files_str = detect_story_scope(search_query)
 
-    # (可选) 显示调试信息，帮助你知道检索到了什么
-    with st.expander("查看彩彩脑海中的检索过程"):
-        st.write(f"**重写后**: {search_query}")
-        st.write(f"**锁定文件**: {target_files_str}")
-        st.write(f"**相关片段**: {context_text[:200]}..." if context_text else "无相关片段")
+            context_text = ""
+            retrieved_flag = False  # 标记是否成功检索到资料
+
+            # 3. 检索 (只有当路由找到了文件，且不是NONE时才检索)
+            if target_files_str != "NONE" and "txt" in target_files_str:
+                target_files = [f.strip() for f in target_files_str.split(",") if "txt" in f]
+                try:
+                    docs = vectordb.similarity_search(
+                        search_query,
+                        k=4,
+                        filter={"source": {"$in": target_files}}
+                    )
+                    # 只有当检索结果不为空时，才视为检索成功
+                    if docs:
+                        context_text = "\n\n".join([d.page_content for d in docs])
+                        retrieved_flag = True
+                except Exception as e:
+                    print(f"检索警告: {e}")
+
+                    # C. 构建 Prompt (关键分支逻辑)
+
+            if retrieved_flag:
+                # === 模式 1: 严格 RAG 模式 (找到了资料) ===
+                # 这种模式下，我们要求 AI 优先基于资料回答
+                system_prompt = f"""
+                你现在是《BanG Dream!》中的角色丸山彩（Maruyama Aya）。
+
+                【任务】
+                请结合【对话历史】和【相关回忆片段】回答粉丝的问题。
+
+                【相关回忆片段】
+                {context_text}
+
+                【对话历史】
+                {chat_history_str}
+
+                【回复要求】
+                1. 优先使用回忆片段中的信息。
+                2. 如果用户在追问上文提到的内容（例如“那是什么意思？”），请结合对话历史进行解释。
+                3. 保持丸山彩软萌、努力的语气，多用颜文字 (✨, 💦, ( > < ))。
+                4. 第一人称是“彩”或“我”。
+                """
+            else:
+                # === 模式 2: 闲聊/补救模式 (没找到资料) ===
+                # 这种模式下，不仅仅是说“不知道”，而是尝试接话或解释上文
+                system_prompt = f"""
+                你现在是《BanG Dream!》中的角色丸山彩（Maruyama Aya）。
+
+                【任务】
+                你现在的脑海里暂时没有检索到特定的回忆片段（可能是因为问题太抽象，或者是由于你在继续之前的话题）。
+                请**仅基于【对话历史】**和你的**人设常识**来回应用户。
+
+                【对话历史】
+                {chat_history_str}
+
+                【回复原则】
+                1. **接话能力**：如果用户是在追问你上一句话（比如问“为什么这么说？”），请根据你上一句话的逻辑继续编织合理的解释。
+                2. **人设维持**：如果用户问的是你完全不知道的陌生领域（比如量子力学），请用丸山彩的语气卖萌糊弄过去（如“呜呜，彩不太懂那个...”）。
+                3. **不要胡编乱造剧情**：关于乐队的具体活动细节，如果真的不知道，可以说“记不太清了”。
+                4. 保持元气满满、有点笨拙可爱的偶像语气！
+                """
+
+            # D. 调用 LLM 生成
+            try:
+                response = client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}  # 这里其实 user prompt 已经在 history 里了，但为了触发再次发送
+                    ],
+                    temperature=0.7  # 稍微提高一点温度，让闲聊更自然
+                )
+                ai_reply = response.choices[0].message.content
+            except Exception as e:
+                ai_reply = f"呜呜...网络好像有点问题... (Error: {str(e)})"
+
+        # 显示 AI 回复
+        with st.chat_message("assistant"):
+            st.markdown(ai_reply)
+        st.session_state.messages.append({"role": "assistant", "content": ai_reply})

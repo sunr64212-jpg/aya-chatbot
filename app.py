@@ -109,12 +109,14 @@ def detect_story_scope(search_query):
         return "NONE"
 
     prompt = f"""
-    你是一个《BanG Dream!》剧情导航员。从下方索引中找出1-3个相关文件名。
+    你是一个《BanG Dream!》剧情导航员。从下方索引中找出相关文件名。
     【文件索引】
     {STORY_INDEX_CONTEXT}
     【用户问题】
     {search_query}
-    【输出】仅输出文件名(如 B2.txt,S1.txt)，用逗号分隔。无法确定输出NONE。
+    【输出】仅输出文件名(如 B2.txt,S1.txt)，用逗号分隔。
+    **注意：如果用户询问“全员”或“乐队成员”，请务必列出该乐队所有成员对应的文件名（通常是5个）。**
+    无法确定输出NONE。
     """
     try:
         response = client.chat.completions.create(
@@ -180,7 +182,7 @@ if prompt := st.chat_input("和彩彩聊聊吧..."):
             try:
                 docs = vectordb.similarity_search(
                     search_query,
-                    k=4,
+                    k=10,
                     filter={"source": {"$in": target_sources}}
                 )
 

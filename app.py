@@ -182,7 +182,7 @@ if prompt := st.chat_input("和彩彩聊聊吧..."):
             try:
                 docs = vectordb.similarity_search(
                     search_query,
-                    k=10,
+                    k=20,
                     filter={"source": {"$in": target_sources}}
                 )
 
